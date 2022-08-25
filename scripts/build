@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -e
+
+mkdir build
+cd build
+
+# Get latest version of control lib and build it
+git clone https://github.com/swedishembedded/control.git
+cd control
+cmake .
+make VERBOSE=1
+sudo make install
+cd ..
+
+# Build release
+cmake ..
+make VERBOSE=1
+cpack
+
+# Build coverage
+cmake \
+	-D"CMAKE_CXX_FLAGS=-g -O2 -w -fprofile-arcs -ftest-coverage" \
+	-D"CMAKE_C_FLAGS=-g -O2 -w -fprofile-arcs -ftest-coverage" ..
+make VERBOSE=1
+make test
+ctest -T Coverage
+../scripts/coverage
+cd ..

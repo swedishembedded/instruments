@@ -1,0 +1,23 @@
+image: swedishembedded/build:latest
+
+default:
+  tags:
+    - docker
+
+stages:
+ - build
+
+# This job builds applications
+build:
+    stage: build
+    artifacts:
+        paths:
+            - build/*.deb
+            - build/instruments.pdf
+        expire_in: 1 week
+        when: always
+    rules:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    script:
+        - ./scripts/init
+        - ./scripts/build

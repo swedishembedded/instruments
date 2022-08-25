@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-20.04
+    container:
+        image: docker.io/swedishembedded/build:latest
+    steps:
+    - name: Prepare
+      run: |
+          apt-get update
+    - name: Configure git to trust the workspace despite the different owner
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+          fetch-depth: 0
+    - name: Build everything
+      run: |
+        ./scripts/init
+        ./scripts/build
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+          name: package
+          path: |
+            build/*.deb
