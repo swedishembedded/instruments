@@ -6,19 +6,20 @@
  **/
 #undef __STRICT_ANSI__
 #include <math.h>
+#include <stdio.h>
 
 #include <control/linalg.h>
 #include "dc_motor.h"
 
 #if !defined(CONSTRAIN_FLOAT)
-#define CONSTRAIN_FLOAT(n, low, high) (((n) > (high))?(high):(((n) < (low))?(low):(n)))
+#define CONSTRAIN_FLOAT(n, low, high) (((n) > (high)) ? (high) : (((n) < (low)) ? (low) : (n)))
 #endif
 
 void model_dc_motor_init(struct model_dc_motor *self)
 {
 	self->u[0] = 0;
 	self->J = 0.01;
-	self->b = 0.1;
+	self->b = 0.001;
 	self->K = 0.01;
 	self->R = 1;
 	self->L = 0.5;

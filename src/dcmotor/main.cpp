@@ -54,23 +54,54 @@ extern "C" {
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
+struct ScrollingBuffer {
+	int MaxSize;
+	int Offset;
+	ImVector<ImVec2> Data;
+	ScrollingBuffer(int max_size = 2000)
+	{
+		MaxSize = max_size;
+		Offset = 0;
+		Data.reserve(MaxSize);
+	}
+	void AddPoint(float x, float y)
+	{
+		if (Data.size() < MaxSize) {
+			Data.push_back(ImVec2(x, y));
+		} else {
+			Data[Offset] = ImVec2(x, y);
+			Offset = (Offset + 1) % MaxSize;
+		}
+	}
+	void Erase()
+	{
+		if (Data.size() > 0) {
+			Data.shrink(0);
+			Offset = 0;
+		}
+	}
+};
+
 struct device_state {
 	pthread_mutex_t lock;
-	struct virtual_device data;
+	struct model_dc_motor dc_motor;
+	struct dcmotor_instrument data;
 };
 
 #define PLOT_SIZE 1000
 
 struct application {
 	struct instrulink *instrulink;
-	struct device_state state;
 	struct {
-		float time[PLOT_SIZE];
-		float omega[PLOT_SIZE];
-		float reference[PLOT_SIZE];
-		unsigned int x;
+		float t;
+		ScrollingBuffer omega;
+		ScrollingBuffer current;
+		ScrollingBuffer reference;
+		ScrollingBuffer control;
+		ScrollingBuffer error;
 	} plot;
 	bool done;
+	struct device_state state;
 };
 
 #define MEM_BASE 0x70000000
@@ -100,27 +131,28 @@ void *_communication_thread(void *data)
 			res.type = MSG_TYPE_HANDSHAKE;
 			break;
 		case MSG_TYPE_WRITE:
-			if (req.addr >= MEM_ADC1_START && req.addr <= MEM_ADC1_END) {
-				memcpy((uint8_t *)(&self->state.data.adc1) + req.addr -
-					       MEM_ADC1_START,
-				       &req.value, sizeof(uint32_t));
+			if (req.addr == __builtin_offsetof(struct dcmotor_instrument, tick)) {
+				model_dc_motor_step(&self->state.dc_motor);
 			} else {
-				memcpy(data + req.addr, &req.value, sizeof(uint32_t));
+				if (req.addr >= sizeof(self->state.data)) {
+					fprintf(stderr, "Error: %08x: offset out of bounds!\n",
+						(uint32_t)req.addr);
+				} else {
+					memcpy(data + req.addr, &req.value, sizeof(uint32_t));
+				}
 			}
 			res.type = MSG_TYPE_OK;
 			break;
 		case MSG_TYPE_READ:
-			if (req.addr >= MEM_ADC1_START && req.addr <= MEM_ADC1_END) {
-				memcpy(&res.value,
-				       (uint8_t *)(&self->state.data.adc1) + req.addr -
-					       MEM_ADC1_START,
-				       sizeof(uint32_t));
+			if (req.addr >= sizeof(self->state.data)) {
+				fprintf(stderr, "Error: %08x: offset out of bounds!\n",
+					(uint32_t)req.addr);
 			} else {
 				memcpy(&res.value, data + req.addr, sizeof(uint32_t));
 			}
 			res.type = MSG_TYPE_OK;
 			// interrupt flags are reset when they are read
-			if (req.addr == offsetof(struct virtual_device, INTF)) {
+			if (req.addr == offsetof(struct dcmotor_instrument, INTF)) {
 				self->state.data.INTF = 0;
 			}
 			break;
@@ -141,54 +173,58 @@ void *_communication_thread(void *data)
 	return NULL;
 }
 
-void implot_radial_line(const char* name, float inner_radius,
-                        float outer_radius, float angle) {
-    const float cos_angle = cosf(angle);
-    const float sin_angle = sinf(angle);
-    std::array<float, 2> xs = {inner_radius * cos_angle,
-                               outer_radius * cos_angle};
-    std::array<float, 2> ys = {inner_radius * sin_angle,
-                               outer_radius * sin_angle};
-    ImPlot::PlotLine(name, xs.data(), ys.data(), 2);
+void implot_radial_line(const char *name, float inner_radius, float outer_radius, float angle)
+{
+	const float cos_angle = cosf(angle);
+	const float sin_angle = sinf(angle);
+	std::array<float, 2> xs = { inner_radius * cos_angle, outer_radius * cos_angle };
+	std::array<float, 2> ys = { inner_radius * sin_angle, outer_radius * sin_angle };
+	ImPlot::PlotLine(name, xs.data(), ys.data(), 2);
 }
 
 int main(int argc, char **argv)
 {
-	if (argc != 4) {
-		printf("Usage: %s <mainPort> <irqPort> <address>\n", argv[0]);
-		return 1;
-	}
-	int mainPort = atoi(argv[1]);
-	int irqPort = atoi(argv[2]);
-	const char *address = argv[3];
 	struct application app;
 	struct application *self = &app;
-	struct model_dc_motor dc_motor;
 
-	memset(&app, 0, sizeof(app));
-
-	self->state.data.Kp = 1;
-	self->state.data.Ki = 1;
-	self->state.data.Kd = 1;
-	self->state.data.d = 0.85;
+	self->state.data.pid.Kp = 0.683;
+	self->state.data.pid.Ki = 0.008;
+	self->state.data.pid.Kd = 2.225;
+	self->state.data.pid.d = 0.85;
 	self->state.data.Kff = 0;
 
-	for (unsigned int c = 0; c < PLOT_SIZE; c++) {
-		self->plot.time[c] = c;
-	}
+	self->state.data.lqi.L[0] = 3.338;
+	self->state.data.lqi.L[1] = 3.357;
+	self->state.data.lqi.Li = 0.040;
 
-	model_dc_motor_init(&dc_motor);
+	self->plot.t = 0;
+	self->plot.omega.AddPoint(0, 0);
+	self->plot.current.AddPoint(0, 0);
+	self->plot.reference.AddPoint(0, 0);
+	self->plot.control.AddPoint(0, 0);
+	self->plot.error.AddPoint(0, 0);
+
+	model_dc_motor_init(&self->state.dc_motor);
 	pthread_mutex_init(&self->state.lock, NULL);
 	self->instrulink = instrulink_new();
 
-	printf("Connecting to %s %d %d\n", address, mainPort, irqPort);
+	if (argc != 4) {
+		printf("Usage: %s <mainPort> <irqPort> <address>\n", argv[0]);
+		//return 1;
+	} else {
+		int mainPort = atoi(argv[1]);
+		int irqPort = atoi(argv[2]);
+		const char *address = argv[3];
 
-	if (instrulink_connect(self->instrulink, mainPort, irqPort, address) != 0) {
-		fprintf(stderr, "Could not connect to instrulink (IP: %s)\n", address);
-		return -1;
+		printf("Connecting to %s %d %d\n", address, mainPort, irqPort);
+
+		if (instrulink_connect(self->instrulink, mainPort, irqPort, address) != 0) {
+			fprintf(stderr, "Could not connect to instrulink (IP: %s)\n", address);
+			return -1;
+		}
+		printf("Connected to %s %d %d\n", address, mainPort, irqPort);
 	}
 
-	printf("Connected to %s %d %d\n", address, mainPort, irqPort);
 	// Setup SDL
 	// (Some versions of SDL before <2.0.10 appears to have performance/stalling issues on a minority of Windows systems,
 	// d updating to latest version of SDL is recommended!)
@@ -222,12 +258,9 @@ int main(int argc, char **argv)
 	ImPlot::CreateContext();
 	ImGuiIO &io = ImGui::GetIO();
 	(void)io;
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
-	//ImGui::StyleColorsLight();
 
 	// Setup Platform/Renderer backends
 	ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
@@ -255,84 +288,148 @@ int main(int argc, char **argv)
 
 		pthread_mutex_lock(&self->state.lock);
 
-		dc_motor.u[0] = self->state.data.control;
-		model_dc_motor_step(&dc_motor);
+		self->state.dc_motor.u[0] = self->state.data.control;
 
-		ImGui::Begin("DC Motor Simulation", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+		ImGui::SetNextWindowPos(ImVec2(0.0, 0.0));
+		ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+		ImGui::Begin("DC Motor Simulation", NULL,
+			     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration);
 
-		ImGui::Text("DC Motor Simulation");
-		ImGui::PushItemWidth(400);
+		ImGui::Columns(2);
+		ImGui::SetColumnWidth(0, 220);
 
-		ImGui::SliderFloat("Drive voltage (V)", &dc_motor.u[0], -25.0f, 25.0f);
-		ImGui::SliderFloat("Angular velocity (Rad/sec)", &dc_motor.x[0], -25.f, 25.f);
-		ImGui::SliderFloat("Armature current (Amp)", &dc_motor.x[1], -25.f, 25.f);
-		ImGui::SliderFloat("Rotor position (Rad)", &dc_motor.position, -M_PI, M_PI);
-		ImGui::SliderFloat("Rotor inertia (J) (kg.m^2)", &dc_motor.J, -2.5f, 2.5f);
-		ImGui::SliderFloat("Motor viscous friction constant (b) (N.m.s)", &dc_motor.b,
-				   -2.5f, 2.5f);
-		ImGui::SliderFloat("Electromotiva force (Ke) (V/rad/sec)", &dc_motor.K, -2.5f,
-				   2.5f);
-		ImGui::SliderFloat("Torque constant (Ki) (N.m/Amp)", &dc_motor.K, -2.5f, 2.5f);
-		ImGui::SliderFloat("Electrical resistance (R) (Ohm)", &dc_motor.R, -2.5f, 2.5f);
-		ImGui::SliderFloat("Electrical inductance (L) (Henry)", &dc_motor.L, -2.5f, 2.5f);
-
-		/*
-		uint32_t u32_zero = 0;
-		uint32_t u32_max = 0x7FFFFFFF;
-		uint32_t u16_max = 0xFFFF;
-		ImGui::SliderScalar("ARR", ImGuiDataType_U32, &self->state.data.tim1.ARR, &u32_zero,
-				    &u32_max, "0x%08X");
-		ImGui::SliderScalar("ADC", ImGuiDataType_U32, &self->state.data.adc1.DR, &u32_zero,
-				    &u16_max, "0x%04X");
-		*/
-
-		ImGui::PopItemWidth();
-
-		ImGui::SetNextItemWidth(100);
-		ImGui::PushItemWidth(100);
-		if (ImPlot::BeginPlot("##Rotor Angle")){
+		if (ImPlot::BeginPlot("##Rotor Angle", ImVec2(200, 200))) {
 			ImPlot::SetupAxisLimits(ImAxis_X1, -1.0, 1.0);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -1.0, 1.0);
+			ImPlot::SetupAxis(ImAxis_X1, nullptr, ImPlotAxisFlags_NoTickLabels);
+			ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_NoTickLabels);
 			ImPlot::PushStyleColor(ImPlotCol_Line,
 					       (uint32_t)ImColor(1.0f, 1.0f, 1.0f, 1.0));
-			implot_radial_line("Rotor Angle", 0.0f, 1.0f, dc_motor.position);
+			implot_radial_line("##Rotor Angle", 0.0f, 1.0f,
+					   self->state.dc_motor.position);
 			ImPlot::PushStyleColor(ImPlotCol_Line,
 					       (uint32_t)ImColor(1.0f, 1.0f, 1.0f, 0.2));
-			//ImPlot::PlotLine("Rotor Circle", viz_data.circle_xs.data(),
-			//		 viz_data.circle_ys.data(), viz_data.circle_xs.size());
 			ImPlot::PopStyleColor(2);
 			ImPlot::EndPlot();
 		}
-		ImGui::PopItemWidth();
 
-		if (ImPlot::BeginPlot("Sqrt")) {
-			ImPlot::SetupAxis(ImAxis_X1, "Sample");
-			ImPlot::SetupAxisLimits(ImAxis_X1, 0, PLOT_SIZE);
-			ImPlot::SetupAxis(ImAxis_Y1, "Action");
-			ImPlot::SetupAxisLimits(ImAxis_X1, -10, 50);
-			ImPlot::PlotLine("##data", self->plot.time, self->plot.omega, PLOT_SIZE);
-			ImPlot::PlotLine("##data", self->plot.time, self->plot.reference,
-					 PLOT_SIZE);
+		ImGui::NextColumn();
+
+		if (ImGui::CollapsingHeader("DC Motor simulation",
+					    ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGui::SliderFloat("Drive voltage (V)", &self->state.dc_motor.u[0], -25.0f,
+					   25.0f);
+			ImGui::SliderFloat("Angular velocity (Rad/sec)", &self->state.dc_motor.x[0],
+					   -2.5f, 2.5f);
+			ImGui::SliderFloat("Armature current (Amp)", &self->state.dc_motor.x[1],
+					   -25.f, 25.f);
+			ImGui::SliderFloat("Rotor position (Rad)", &self->state.dc_motor.position,
+					   -M_PI, M_PI);
+			ImGui::SliderFloat("Rotor inertia (J) (kg.m^2)", &self->state.dc_motor.J,
+					   0.0f, 0.25f);
+			ImGui::SliderFloat("Motor viscous friction constant (b) (N.m.s)",
+					   &self->state.dc_motor.b, 0.0f, 0.2f);
+			ImGui::SliderFloat("Electromotiva force (Ke) (V/rad/sec)",
+					   &self->state.dc_motor.K, 0.0f, 2.5f);
+			ImGui::SliderFloat("Torque constant (Ki) (N.m/Amp)",
+					   &self->state.dc_motor.K, 0.0f, 0.5f);
+			ImGui::SliderFloat("Electrical resistance (R) (Ohm)",
+					   &self->state.dc_motor.R, 0.0f, 15.f);
+			ImGui::SliderFloat("Electrical inductance (L) (Henry)",
+					   &self->state.dc_motor.L, 0.0f, 5.0f);
+		}
+
+		if (ImGui::CollapsingHeader("Controller", ImGuiTreeNodeFlags_DefaultOpen)) {
+			const char *controllers[] = { "PID Controller", "LQI Controller" };
+			static const char *controller = NULL;
+
+			if (!controller)
+				controller = controllers[0];
+
+			if (ImGui::BeginCombo("##combo", controller)) {
+				for (int n = 0; n < IM_ARRAYSIZE(controllers); n++) {
+					bool is_selected = (controller == controllers[n]);
+					if (ImGui::Selectable(controllers[n], is_selected))
+						controller = controllers[n];
+					if (is_selected)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+
+			if (controller == controllers[0]) {
+				self->state.data.controller = 0;
+				ImGui::SliderFloat("Proportional gain (Kp)",
+						   &self->state.data.pid.Kp, 0.f, 10.f);
+				ImGui::SliderFloat("Integral gain (Ki)", &self->state.data.pid.Ki,
+						   0.f, 1.f);
+				ImGui::SliderFloat("Derivative gain (Kd)", &self->state.data.pid.Kd,
+						   0.f, 100.0f);
+				ImGui::SliderFloat("Derivative filter pole (d)",
+						   &self->state.data.pid.d, 0.f, 1.f);
+			} else {
+				self->state.data.controller = 1;
+				ImGui::SliderFloat("Angular velocity error gain (L[0])",
+						   &self->state.data.lqi.L[0], 0.f, 5.f);
+				ImGui::SliderFloat("Current gain (L[1])",
+						   &self->state.data.lqi.L[1], 0.f, 5.f);
+				ImGui::SliderFloat("Setpoing integral gain (Li)",
+						   &self->state.data.lqi.Li, 0.f, 1.0f);
+			}
+			ImGui::SliderFloat("Feedforward gain (Kff)", &self->state.data.Kff, 0.f,
+					   10.f);
+			ImGui::SliderFloat("Control action voltage (u)", &self->state.data.control,
+					   -25.f, 25.f);
+			ImGui::SliderFloat("Reference angular velocity (r)",
+					   &self->state.data.reference, -2.4f, 2.4f);
+		}
+
+		ImGui::Columns(1);
+
+		if (ImPlot::BeginPlot("Motor output")) {
+			ImPlot::SetupAxisLimits(ImAxis_X1, self->plot.t - 2000.0, self->plot.t,
+						ImGuiCond_Always);
+			ImPlot::SetupAxisLimits(ImAxis_Y1, -5, 5);
+			ImPlot::PlotLine("Omega (w)", &self->plot.omega.Data[0].x,
+					 &self->plot.omega.Data[0].y, self->plot.omega.Data.size(),
+					 0, self->plot.omega.Offset, 2 * sizeof(float));
+			ImPlot::PlotLine("Current (I)", &self->plot.current.Data[0].x,
+					 &self->plot.current.Data[0].y,
+					 self->plot.current.Data.size(), 0,
+					 self->plot.current.Offset, 2 * sizeof(float));
+			ImPlot::PlotLine("Reference (w)", &self->plot.reference.Data[0].x,
+					 &self->plot.reference.Data[0].y,
+					 self->plot.reference.Data.size(), 0,
+					 self->plot.reference.Offset, 2 * sizeof(float));
+			ImPlot::PlotLine("Control action (u)", &self->plot.control.Data[0].x,
+					 &self->plot.control.Data[0].y,
+					 self->plot.control.Data.size(), 0,
+					 self->plot.control.Offset, 2 * sizeof(float));
+			ImPlot::EndPlot();
+		}
+		if (ImPlot::BeginPlot("Controller error")) {
+			ImPlot::SetupAxisLimits(ImAxis_X1, self->plot.t - 2000.0, self->plot.t,
+						ImGuiCond_Always);
+			ImPlot::SetupAxisLimits(ImAxis_Y1, -5, 5);
+			ImPlot::PlotLine("Control error (e)", &self->plot.error.Data[0].x,
+					 &self->plot.error.Data[0].y, self->plot.error.Data.size(),
+					 0, self->plot.error.Offset, 2 * sizeof(float));
 			ImPlot::EndPlot();
 		}
 
 		ImGui::End();
+		ImGui::PopStyleVar(1);
 
-		ImGui::Begin("DC Motor Controller", NULL, ImGuiWindowFlags_AlwaysAutoResize);
-		ImGui::SliderFloat("Proportional gain (Kp)", &self->state.data.Kp, 0.f, 200.f);
-		ImGui::SliderFloat("Integral gain (Ki)", &self->state.data.Ki, 0.f, 250.f);
-		ImGui::SliderFloat("Derivative gain (Kd)", &self->state.data.Kd, 0.f, 25.f);
-		ImGui::SliderFloat("Derivative filter pole (d)", &self->state.data.d, 0.f, 1.f);
-		ImGui::SliderFloat("Feedforward gain (Kff)", &self->state.data.Kff, 0.f, 10.f);
-		ImGui::SliderFloat("Control action (u)", &self->state.data.control, -250.f, 250.f);
-		ImGui::SliderFloat("Target (r)", &self->state.data.reference, -25.f, 25.f);
-		ImGui::End();
+		self->state.data.omega = self->state.dc_motor.y[0];
 
-		self->state.data.omega = dc_motor.y[0];
+		float t = self->plot.t++;
 
-		self->plot.omega[self->plot.x] = self->state.data.omega;
-		self->plot.reference[self->plot.x] = self->state.data.reference;
-		self->plot.x = (self->plot.x + 1) % PLOT_SIZE;
+		self->plot.omega.AddPoint(t, self->state.data.omega);
+		self->plot.current.AddPoint(t, self->state.dc_motor.x[1]);
+		self->plot.reference.AddPoint(t, self->state.data.reference);
+		self->plot.control.AddPoint(t, self->state.data.control);
+		self->plot.error.AddPoint(t, self->state.data.reference - self->state.data.omega);
 
 		pthread_mutex_unlock(&self->state.lock);
 
@@ -344,6 +441,25 @@ int main(int argc, char **argv)
 		glClear(GL_COLOR_BUFFER_BIT);
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		SDL_GL_SwapWindow(window);
+		/*
+		printf("float A[ADIM * ADIM] = { %f, %f, %f, %f };\n",
+						self->state.dc_motor.A[0],
+						self->state.dc_motor.A[1],
+						self->state.dc_motor.A[2],
+						self->state.dc_motor.A[3]
+						);
+		printf("float B[ADIM * RDIM] = { %f, %f };\n",
+						self->state.dc_motor.B[0],
+						self->state.dc_motor.B[1]
+						);
+		printf("float C[YDIM * ADIM] = { %f, %f };\n",
+						self->state.dc_motor.C[0],
+						self->state.dc_motor.C[1]
+						);
+		printf("float D[YDIM * RDIM] = { %f };\n",
+						self->state.dc_motor.D[0]
+						);
+*/
 	}
 
 	instrulink_disconnect(self->instrulink);
