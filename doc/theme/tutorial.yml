@@ -15,7 +15,9 @@ base:
   line_height_length: 14
   line_height: $base_line_height_length / $base_font_size
 prose:
-  margin-bottom: 6
+  margin-bottom: 10
+block:
+  margin_bottom: 10
 vertical_spacing: $base_line_height_length
 heading:
   font_color: #1d4e89
@@ -65,15 +67,18 @@ title_page:
   revision:
     margin_top: $base_font_size * 0.5
 table:
-  border_width: 0
-  cell:
-    padding: 3
+  background_color: FFFFFF
+  border_color: DDDDDD
+  border_width: 1
+  grid_width: 1
+  cell_padding: 3
   head:
-    font_size: 10
+    font_style: bold
+    border_bottom_width: 2.5
   body:
-    font_size: 9
+    stripe_background_color: F9F9F9
   foot:
-    font_size: 9
+    background_color: F0F0F0
 conum:
   font_family: M+ 1mn
   font_color: #0f80aa

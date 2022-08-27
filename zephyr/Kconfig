@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2022 Martin Schröder <info@swedishembedded.com>
+# Consulting: https://swedishembedded.com/consulting
+# Training: https://swedishembedded.com/training
+
+config INSTRUMENTS
+	bool "Swedish Embedded instruments support"
+	default n
+	help
+		Swedish embedded instruments support

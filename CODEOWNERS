@@ -1,0 +1,12 @@
+/CMakeLists.txt  @mkschreder
+/doc/		@mkschreder
+/include/		@mkschreder
+/instruments.pdf		@mkschreder
+/LICENSE		@mkschreder
+/README.md		@mkschreder
+/scripts/		@mkschreder
+/src/		@mkschreder
+/tests/		@mkschreder
+/zephyr/		@mkschreder
+/CODEOWNERS		@mkschreder
+/.checkpatch.conf		@mkschreder
