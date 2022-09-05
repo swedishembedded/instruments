@@ -20,3 +20,4 @@ target_include_directories(instruments
 target_include_directories(instruments INTERFACE "${CMAKE_SOURCE_DIR}/include/")
 
 add_subdirectory(dcmotor)
+add_subdirectory(keypad)

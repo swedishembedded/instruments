@@ -1,4 +1,4 @@
-add_executable(instrument-dcmotor main.cpp dc_motor.c)
+add_executable(instrument-dcmotor main.cpp)
 
 target_include_directories(instruments PRIVATE "${CMAKE_SOURCE_DIR}/include/")
 
