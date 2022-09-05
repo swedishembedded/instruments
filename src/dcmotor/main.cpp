@@ -47,7 +47,7 @@
 #include <SDL_opengl.h>
 
 extern "C" {
-#include "dc_motor.h"
+#include <control/model/dc_motor.h>
 }
 
 #include <instruments/dcmotor.h>
@@ -441,25 +441,6 @@ int main(int argc, char **argv)
 		glClear(GL_COLOR_BUFFER_BIT);
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		SDL_GL_SwapWindow(window);
-		/*
-		printf("float A[ADIM * ADIM] = { %f, %f, %f, %f };\n",
-						self->state.dc_motor.A[0],
-						self->state.dc_motor.A[1],
-						self->state.dc_motor.A[2],
-						self->state.dc_motor.A[3]
-						);
-		printf("float B[ADIM * RDIM] = { %f, %f };\n",
-						self->state.dc_motor.B[0],
-						self->state.dc_motor.B[1]
-						);
-		printf("float C[YDIM * ADIM] = { %f, %f };\n",
-						self->state.dc_motor.C[0],
-						self->state.dc_motor.C[1]
-						);
-		printf("float D[YDIM * RDIM] = { %f };\n",
-						self->state.dc_motor.D[0]
-						);
-*/
 	}
 
 	instrulink_disconnect(self->instrulink);
