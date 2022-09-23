@@ -26,9 +26,9 @@ enum instrulink_message_type {
 	/** Standard "tick" message */
 	MSG_TYPE_TICK_CLOCK = 1,
 	/** Write value to address */
-	MSG_TYPE_WRITE = 2,
+	MSG_TYPE_WRITE32 = 2,
 	/** Read value from address */
-	MSG_TYPE_READ = 3,
+	MSG_TYPE_READ32 = 3,
 	/** Reset the device */
 	MSG_TYPE_RESET = 4,
 	/** Interrupt request */
@@ -41,4 +41,12 @@ enum instrulink_message_type {
 	MSG_TYPE_DISCONNECT = 8,
 	/** Handshake (first message sent by master) */
 	MSG_TYPE_HANDSHAKE = 9,
+	/** Write short */
+	MSG_TYPE_WRITE16 = 10,
+	/** Read short */
+	MSG_TYPE_READ16 = 11,
+	/** Write byte */
+	MSG_TYPE_WRITE8 = 12,
+	/** Read byte */
+	MSG_TYPE_READ8 = 13,
 };

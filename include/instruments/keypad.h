@@ -9,6 +9,11 @@
 
 #include <stdint.h>
 
+enum {
+	KEYPAD_REG_KEYS = 0,
+	KEYPAD_REG_KEYS_CHANGED = 4,
+};
+
 /** This defines our virtual device */
 struct keypad_instrument {
 	/** Keypad key state */

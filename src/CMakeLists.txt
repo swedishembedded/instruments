@@ -7,11 +7,15 @@ set(SOURCES
     imgui_widgets.cpp
     implot.cpp
     implot_items.cpp
-    instrulink.cpp)
+    instrulink.cpp
+    InstrumentContainer.cpp
+    KeypadInstrument.cpp
+    DCMotorInstrument.cpp)
 
 add_library(instruments STATIC ${SOURCES})
 
 target_include_directories(instruments PRIVATE ${SDL2_INCLUDE_DIRS})
+target_include_directories(instruments PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(instruments ${SDL2_LIBRARIES})
 
 target_include_directories(instruments

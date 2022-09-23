@@ -1,0 +1,5 @@
+add_executable(KeypadTest KeypadTest.cpp)
+target_include_directories(KeypadTest PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(KeypadTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(KeypadTest gtest pthread instruments)
+add_test(NAME KeypadTest COMMAND KeypadTest)
