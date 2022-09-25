@@ -1,0 +1,5 @@
+add_executable(LiteUARTTest LiteUARTTest.cpp)
+target_include_directories(LiteUARTTest PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(LiteUARTTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(LiteUARTTest gtest pthread instruments)
+add_test(NAME LiteUARTTest COMMAND LiteUARTTest)

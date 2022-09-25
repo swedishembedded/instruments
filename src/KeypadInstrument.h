@@ -4,8 +4,6 @@
  *
  * Consulting: https://swedishembedded.com/go
  * Training: https://swedishembedded.com/tag/training
- *
- * This is a memory view instrument for debugging memory access.
  **/
 
 #include "instruments/keypad.h"

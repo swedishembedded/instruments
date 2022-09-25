@@ -45,6 +45,7 @@ template <typename T> class BaseInstrument : public IInstrument {
 	{
 		return -ENOTSUP;
 	}
+	virtual void tick() override{};
 	virtual void onIRQ(std::function<void()> cb)
 	{
 		notifyIRQ = cb;

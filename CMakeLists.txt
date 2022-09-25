@@ -6,7 +6,7 @@
 
 cmake_minimum_required(VERSION 3.12.2)
 
-project (instruments VERSION 1.0.1)
+project (instruments VERSION 0.38.0)
 
 find_package(SDL2 REQUIRED)
 

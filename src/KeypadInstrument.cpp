@@ -4,8 +4,6 @@
  *
  * Consulting: https://swedishembedded.com/go
  * Training: https://swedishembedded.com/tag/training
- *
- * This is a memory view instrument for debugging memory access.
  **/
 
 #include "KeypadInstrument.h"
@@ -52,12 +50,9 @@ void KeypadInstrument::render()
 	ImGui::Begin("Keypad", NULL,
 		     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration);
 
-	uint32_t key_state = 0;
 	uint32_t prev_keys_changed = this->regs.keys_changed;
 
 	for (unsigned int c = 1; c < 10; c++) {
-		uint32_t bit = (1 << c);
-
 		char str[16];
 		snprintf(str, sizeof(str), "%d", c);
 
